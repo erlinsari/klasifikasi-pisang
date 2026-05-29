@@ -140,8 +140,8 @@ def download_from_gdrive(file_id, destination):
                 st.error(f"Gagal mengunduh biner model dari Google Drive: {e}")
 
 # ID unik berkas h5 dari Google Drive kamu
-CONVNEXT_FILE_ID = '1PJ1Gsmb5YdLVgyhmBFVy3cx6coO1fBqJ' # Silakan sesuaikan ID spesifik file jika folder id berbeda dengan file id
-MOBILENET_FILE_ID = '1PJ1Gsmb5YdLVgyhmBFVy3cx6coO1fBqJ' 
+CONVNEXT_FILE_ID = '1duMD0qCWZfERbOT0OzuXkr2pHIUYP9YH' # Silakan sesuaikan ID spesifik file jika folder id berbeda dengan file id
+MOBILENET_FILE_ID = '1DdTOkArVh6cV2cwRMEc-ERq7RtnQockB' 
 
 PATH_MOBILENET = "models/best_mobilenet_pisang.h5"
 PATH_CONVNEXT = "models/best_convnext_pisang.h5"
