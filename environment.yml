@@ -1,0 +1,12 @@
+name: klasifikasi-pisang
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - streamlit=1.32.0
+  - tensorflow-cpu
+  - gdown
+  - h5py
+  - pillow
+  - numpy
