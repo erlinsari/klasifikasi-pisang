@@ -4,6 +4,7 @@ import numpy as np
 import time
 import os
 import h5py
+import gdown  # Tambahan pustaka untuk unduh otomatis
 
 # Konfigurasi Halaman
 st.set_page_config(
@@ -136,7 +137,16 @@ st.markdown(css_kustom, unsafe_allow_html=True)
 UKURAN_INPUT = (224, 224)
 CLASS_NAMES = ['matang', 'mentah', 'terlalu_matang']
 
-# --- FUNGSI PEMBUATAN ARSITEKTUR MODEL (BACKEND PERSIS SAMA) ---
+# --- FUNGSI DOWNLOAD OTOMATIS GDOWN ---
+def download_model_gdrive(file_id, dest_path):
+    """Mengunduh file bobot model dari Google Drive jika belum ada di server."""
+    os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+    if not os.path.exists(dest_path):
+        with st.spinner(f"Mengunduh file bobot ({os.path.basename(dest_path)}) dari Google Drive, mohon tunggu..."):
+            url = f"https://google.com{file_id}"
+            gdown.download(url, dest_path, quiet=False)
+
+# --- FUNGSI PEMBUATAN ARSITEKTUR MODEL (BACKEND) ---
 def inject_dense_weights(model, h5_path, expected_in):
     kernel_1 = None
     bias_1 = None
@@ -199,7 +209,12 @@ def load_mobilenet_v3():
         outputs = tf.keras.layers.Dense(3, activation='softmax')(x)
         
         model = tf.keras.Model(inputs, outputs, name="MobileNetV3_Large")
-        inject_dense_weights(model, "models/best_mobilenet_pisang.h5", 960)
+        
+        # SINKRONISASI DAN PROSES UNDUH OTOMATIS FILE MOBILENET (Ukuran 128)
+        h5_path = "models/best_mobilenet_pisang.h5"
+        download_model_gdrive("1x2qTlxgH1Fe145brkJvzCGwLw8YMqBtC", h5_path)
+        
+        inject_dense_weights(model, h5_path, 960)
         return model, None
     except Exception as e:
         return None, str(e)
@@ -221,7 +236,12 @@ def load_convnext_tiny():
         outputs = tf.keras.layers.Dense(3, activation='softmax')(x)
         
         model = tf.keras.Model(inputs, outputs, name="ConvNeXt_Tiny")
-        inject_dense_weights(model, "models/best_convnext_pisang.h5", 768)
+        
+        # SINKRONISASI DAN PROSES UNDUH OTOMATIS FILE CONVNEXT (Ukuran 224)
+        h5_path = "models/best_convnext_pisang.h5"
+        download_model_gdrive("19nFbRMZHYdKeG7nzG17Ow6p-XJ6UBqr7", h5_path)
+        
+        inject_dense_weights(model, h5_path, 768)
         return model, None
     except Exception as e:
         return None, str(e)
@@ -249,7 +269,7 @@ def tampilkan_gambar_visualisasi(nama_file, deskripsi):
         gambar = Image.open(path_visual)
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
-            st.image(gambar, caption=deskripsi, use_column_width=True)
+            st.image(gambar, caption=deskripsi, use_container_width=True)
     else:
         st.info(f"Visualisasi {nama_file} belum tersedia.")
 
@@ -257,6 +277,8 @@ def tampilkan_gambar_visualisasi(nama_file, deskripsi):
 
 # HEADER
 st.markdown("<h1 style='text-align: center; margin-top: 1rem; color: #1E293B;'>Kematangan Buah Pisang Lokal Indonesia</h1>", unsafe_allow_html=True)
+
+# Lanjutan kode UI Anda seperti Tabs, File Uploader, dsb bisa langsung ditaruh di bawah baris ini...
 st.markdown("<br>", unsafe_allow_html=True)
 
 # --- PREDIKSI UTAMA ---
