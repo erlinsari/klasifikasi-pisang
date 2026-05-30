@@ -3,3 +3,4 @@ tensorflow-cpu>=2.16.1
 numpy==1.26.4
 Pillow==10.2.0
 h5py
+gdown
