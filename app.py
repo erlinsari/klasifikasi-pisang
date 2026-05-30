@@ -4,7 +4,6 @@ import numpy as np
 import time
 import os
 import h5py
-import urllib.request
 
 # Konfigurasi Halaman
 st.set_page_config(
@@ -32,15 +31,18 @@ css_kustom = """
         color: #1E293B !important;
     }
     
+    /* Sembunyikan ikon rantai (anchor link) pada setiap judul */
     h1 a, h2 a, h3 a, h4 a, h5 a, h6 a {
         display: none !important;
     }
 
+    /* Mengunci Sidebar agar tidak bisa disembunyikan (hapus tombol panah/X) */
     [data-testid="collapsedControl"], 
     [data-testid="stSidebarCollapseButton"] {
         display: none !important;
     }
 
+    /* TABS NAVBAR STYLING - CENTERED */
     .stTabs [data-baseweb="tab-list"] {
         display: flex;
         justify-content: center;
@@ -69,6 +71,7 @@ css_kustom = """
         background-color: transparent !important;
     }
 
+    /* Card styling */
     .metric-card {
         background-color: #FFFFFF;
         border: 1px solid #FDE047;
@@ -87,6 +90,7 @@ css_kustom = """
         margin-bottom: 24px;
     }
 
+    /* Status Badges */
     .status-mentah {
         color: #059669;
         background-color: #ECFDF5;
@@ -128,40 +132,17 @@ css_kustom = """
 """
 st.markdown(css_kustom, unsafe_allow_html=True)
 
-# --- SISTEM OTOMATISASI UNDUH MODEL DARI GOOGLE DRIVE ---
-def download_from_gdrive(file_id, destination):
-    if not os.path.exists(destination):
-        os.makedirs(os.path.dirname(destination), exist_ok=True)
-        url = f'https://drive.google.com/uc?export=download&id={file_id}'
-        with st.spinner(f"Mengunduh komponen model {os.path.basename(destination)} dari Cloud Storage (Hanya dilakukan sekali saat startup)..."):
-            try:
-                urllib.request.urlretrieve(url, destination)
-            except Exception as e:
-                st.error(f"Gagal mengunduh biner model dari Google Drive: {e}")
-
-# ID unik berkas h5 dari Google Drive kamu
-CONVNEXT_FILE_ID = '1duMD0qCWZfERbOT0OzuXkr2pHIUYP9YH' # Silakan sesuaikan ID spesifik file jika folder id berbeda dengan file id
-MOBILENET_FILE_ID = '1DdTOkArVh6cV2cwRMEc-ERq7RtnQockB' 
-
-PATH_MOBILENET = "models/best_mobilenet_pisang.h5"
-PATH_CONVNEXT = "models/best_convnext_pisang.h5"
-
-# Trigger pengunduhan sebelum proses pemuatan arsitektur model neural network
-download_from_gdrive(MOBILENET_FILE_ID, PATH_MOBILENET)
-download_from_gdrive(CONVNEXT_FILE_ID, PATH_CONVNEXT)
-
-
-# Konstanta Aplikasi
+# Konstanta
 UKURAN_INPUT = (224, 224)
 CLASS_NAMES = ['matang', 'mentah', 'terlalu_matang']
 
-# --- FUNGSI PEMBUATAN ARSITEKTUR MODEL ---
+# --- FUNGSI PEMBUATAN ARSITEKTUR MODEL (BACKEND PERSIS SAMA) ---
 def inject_dense_weights(model, h5_path, expected_in):
-    kernel_1, bias_1, kernel_2, bias_2 = None, None, None, None
+    kernel_1 = None
+    bias_1 = None
+    kernel_2 = None
+    bias_2 = None
     
-    if not os.path.exists(h5_path):
-        return
-        
     with h5py.File(h5_path, 'r') as f:
         g = f['model_weights'] if 'model_weights' in f else f
         
@@ -184,6 +165,7 @@ def inject_dense_weights(model, h5_path, expected_in):
                             if group[sub_k].shape == (3,):
                                 bias_2 = group[sub_k][:]
                                 break
+        
         search_group(g)
         
     if kernel_1 is not None and bias_1 is not None:
@@ -217,7 +199,7 @@ def load_mobilenet_v3():
         outputs = tf.keras.layers.Dense(3, activation='softmax')(x)
         
         model = tf.keras.Model(inputs, outputs, name="MobileNetV3_Large")
-        inject_dense_weights(model, PATH_MOBILENET, 960)
+        inject_dense_weights(model, "models/best_mobilenet_pisang.h5", 960)
         return model, None
     except Exception as e:
         return None, str(e)
@@ -239,13 +221,14 @@ def load_convnext_tiny():
         outputs = tf.keras.layers.Dense(3, activation='softmax')(x)
         
         model = tf.keras.Model(inputs, outputs, name="ConvNeXt_Tiny")
-        inject_dense_weights(model, PATH_CONVNEXT, 768)
+        inject_dense_weights(model, "models/best_convnext_pisang.h5", 768)
         return model, None
     except Exception as e:
         return None, str(e)
 
 def preprocess_image(image):
     import tensorflow as tf
+    import numpy as np
     img = image.resize(UKURAN_INPUT)
     img_array = tf.keras.preprocessing.image.img_to_array(img)
     img_array = np.expand_dims(img_array, 0)
@@ -260,78 +243,97 @@ def format_hasil(class_name, confidence):
     else:
         return label, confidence, 'status-terlalu'
 
+def tampilkan_gambar_visualisasi(nama_file, deskripsi):
+    path_visual = f"Visualisasi/{nama_file}"
+    if os.path.exists(path_visual):
+        gambar = Image.open(path_visual)
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            st.image(gambar, caption=deskripsi, use_column_width=True)
+    else:
+        st.info(f"Visualisasi {nama_file} belum tersedia.")
+
 # --- UI LAYOUT ---
+
+# HEADER
 st.markdown("<h1 style='text-align: center; margin-top: 1rem; color: #1E293B;'>Kematangan Buah Pisang Lokal Indonesia</h1>", unsafe_allow_html=True)
 st.markdown("<br>", unsafe_allow_html=True)
 
-kolom_kiri, kolom_tengah, kolom_kanan = st.columns([1, 2, 1])
-
-with kolom_tengah:
-    berkas_unggah = st.file_uploader("Pilih file citra (Resolusi disarankan: > 500x500px)", type=['jpg', 'jpeg', 'png'])
+# --- PREDIKSI UTAMA ---
+if True:
+    st.markdown("<br>", unsafe_allow_html=True)
     
-    if berkas_unggah is not None:
-        with st.spinner("Memuat arsitektur model cerdas (membutuhkan beberapa detik pada inisialisasi awal)..."):
-            model_mob, err_mob = load_mobilenet_v3()
-            model_conv, err_conv = load_convnext_tiny()
-            
-        if model_mob is None or model_conv is None:
-            st.warning("Peringatan: Berkas bobot model biner gagal di-load sempurna ke dalam memori.")
-        else:
-            citra_asli = Image.open(berkas_unggah).convert('RGB')
-            st.image(citra_asli, caption="Citra Sampel Terunggah", use_column_width=True)
-            st.markdown("<br>", unsafe_allow_html=True)
-            
-            st.markdown("<hr>", unsafe_allow_html=True)
-            st.markdown("<h3 style='text-align: center; margin-bottom: 2rem; color: #1E293B;'>Laporan Hasil Inspeksi Komparatif</h3>", unsafe_allow_html=True)
-            
-            with st.spinner("Mengeksekusi jaringan saraf tiruan secara paralel..."):
-                img_tensor = preprocess_image(citra_asli)
-                
-                # Eksekusi ConvNeXt
-                start_conv = time.time()
-                pred_c = model_conv.predict(img_tensor, verbose=0)
-                waktu_conv = time.time() - start_conv
-                class_c = CLASS_NAMES[np.argmax(pred_c[0])]
-                conf_c = np.max(pred_c[0]) * 100
-                
-                # Eksekusi MobileNet
-                start_mob = time.time()
-                pred_m = model_mob.predict(img_tensor, verbose=0)
-                waktu_mob = time.time() - start_mob
-                class_m = CLASS_NAMES[np.argmax(pred_m[0])]
-                conf_m = np.max(pred_m[0]) * 100
-                
-                kelas_conv, conf_conv, style_conv = format_hasil(class_c, conf_c)
-                kelas_mob, conf_mob, style_mob = format_hasil(class_m, conf_m)
+    kolom_kiri, kolom_tengah, kolom_kanan = st.columns([1, 2, 1])
 
-                col_conv, col_mob = st.columns(2)
+    with kolom_tengah:
+        berkas_unggah = st.file_uploader("Pilih file citra (Resolusi disarankan: > 500x500px)", type=['jpg', 'jpeg', 'png'])
+        
+        if berkas_unggah is not None:
+            # Pindahkan pemuatan model ke sini (Lazy Loading) agar server cepat menyala
+            with st.spinner("Memuat model kecerdasan buatan untuk pertama kali (membutuhkan beberapa detik)..."):
+                model_mob, err_mob = load_mobilenet_v3()
+                model_conv, err_conv = load_convnext_tiny()
                 
-                with col_conv:
-                    st.markdown(f"""
-                    <div class='metric-card'>
-                        <h3 style='color: #374151; font-size: 1.2rem; margin-bottom: 1.5rem;'>Arsitektur ConvNeXt-Tiny</h3>
-                        <div style='margin-bottom: 2rem;'>
-                            <span class='{style_conv}'>{kelas_conv}</span>
-                        </div>
-                        <p style='margin: 0; font-size: 0.9rem; color: #64748B;'>Tingkat Kepercayaan (Confidence)</p>
-                        <h2 style='margin: 0 0 1.5rem 0; color: #1E293B;'>{conf_conv:.2f}%</h2>
-                        <div style='background-color: #FEFCE8; padding: 10px; border-radius: 6px; display: inline-block;'>
-                            <span style='font-size: 0.85rem; color: #4B5563;'>Waktu Inferensi: <b>{waktu_conv:.3f} detik</b></span>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
+            if model_mob is None or model_conv is None:
+                st.warning("Peringatan: File bobot model belum terpasang dengan benar pada peladen (server).")
+            else:
+                citra_asli = Image.open(berkas_unggah).convert('RGB')
+                st.image(citra_asli, caption="Citra Sampel Terunggah", use_column_width=True)
+                st.markdown("<br>", unsafe_allow_html=True)
+                
+                # Auto-inference (No button)
+                st.markdown("<hr>", unsafe_allow_html=True)
+                st.markdown("<h3 style='text-align: center; margin-bottom: 2rem; color: #1E293B;'>Laporan Hasil Inspeksi Komparatif</h3>", unsafe_allow_html=True)
+                
+                with st.spinner("Mengeksekusi jaringan saraf tiruan secara paralel..."):
+                    img_tensor = preprocess_image(citra_asli)
                     
-                with col_mob:
-                    st.markdown(f"""
-                    <div class='metric-card'>
-                        <h3 style='color: #374151; font-size: 1.2rem; margin-bottom: 1.5rem;'>Arsitektur MobileNetV3-Large</h3>
-                        <div style='margin-bottom: 2rem;'>
-                            <span class='{style_mob}'>{kelas_mob}</span>
+                    # ConvNeXt
+                    start_conv = time.time()
+                    pred_c = model_conv.predict(img_tensor, verbose=0)
+                    waktu_conv = time.time() - start_conv
+                    class_c = CLASS_NAMES[np.argmax(pred_c[0])]
+                    conf_c = np.max(pred_c[0]) * 100
+                    
+                    # MobileNet
+                    start_mob = time.time()
+                    pred_m = model_mob.predict(img_tensor, verbose=0)
+                    waktu_mob = time.time() - start_mob
+                    class_m = CLASS_NAMES[np.argmax(pred_m[0])]
+                    conf_m = np.max(pred_m[0]) * 100
+                    
+                    kelas_conv, conf_conv, style_conv = format_hasil(class_c, conf_c)
+                    kelas_mob, conf_mob, style_mob = format_hasil(class_m, conf_m)
+
+                    col_conv, col_mob = st.columns(2)
+                    
+                    with col_conv:
+                        st.markdown(f"""
+                        <div class='metric-card'>
+                            <h3 style='color: #374151; font-size: 1.2rem; margin-bottom: 1.5rem;'>Arsitektur ConvNeXt-Tiny</h3>
+                            <div style='margin-bottom: 2rem;'>
+                                <span class='{style_conv}'>{kelas_conv}</span>
+                            </div>
+                            <p style='margin: 0; font-size: 0.9rem; color: #64748B;'>Tingkat Kepercayaan (Confidence)</p>
+                            <h2 style='margin: 0 0 1.5rem 0; color: #1E293B;'>{conf_conv:.2f}%</h2>
+                            <div style='background-color: #FEFCE8; padding: 10px; border-radius: 6px; display: inline-block;'>
+                                <span style='font-size: 0.85rem; color: #4B5563;'>Waktu Inferensi: <b>{waktu_conv:.3f} detik</b></span>
+                            </div>
                         </div>
-                        <p style='margin: 0; font-size: 0.9rem; color: #64748B;'>Tingkat Kepercayaan (Confidence)</p>
-                        <h2 style='margin: 0 0 1.5rem 0; color: #1E293B;'>{conf_mob:.2f}%</h2>
-                        <div style='background-color: #FEFCE8; padding: 10px; border-radius: 6px; display: inline-block;'>
-                            <span style='font-size: 0.85rem; color: #4B5563;'>Waktu Inferensi: <b>{waktu_mob:.3f} detik</b></span>
+                        """, unsafe_allow_html=True)
+                        
+                    with col_mob:
+                        st.markdown(f"""
+                        <div class='metric-card'>
+                            <h3 style='color: #374151; font-size: 1.2rem; margin-bottom: 1.5rem;'>Arsitektur MobileNetV3-Large</h3>
+                            <div style='margin-bottom: 2rem;'>
+                                <span class='{style_mob}'>{kelas_mob}</span>
+                            </div>
+                            <p style='margin: 0; font-size: 0.9rem; color: #64748B;'>Tingkat Kepercayaan (Confidence)</p>
+                            <h2 style='margin: 0 0 1.5rem 0; color: #1E293B;'>{conf_mob:.2f}%</h2>
+                            <div style='background-color: #FEFCE8; padding: 10px; border-radius: 6px; display: inline-block;'>
+                                <span style='font-size: 0.85rem; color: #4B5563;'>Waktu Inferensi: <b>{waktu_mob:.3f} detik</b></span>
+                            </div>
                         </div>
-                    </div>
-                    """, unsafe_allow_html=True)
+                        """, unsafe_allow_html=True)
+
